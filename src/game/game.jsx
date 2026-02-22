@@ -1,292 +1,181 @@
-import { useCallback, useRef, useState, useEffect } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, PerspectiveCamera } from "@react-three/drei";
-import { Physics } from "@react-three/rapier";
-
-import Hud from "./hud";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Ground from "./ground";
 import Runner from "./runner";
 import Obstacles from "./obstacles";
-import { WORLD_SPEED_RAMP, WORLD_SPEED_START } from "./constants";
+import Hud from "./hud";
+import { COLORS, GAME } from "./constants";
 
-function Scene({ gameOver, onGameOver, scoreRef, speedRef, restartToken }) {
-  // const keys = useKeyboard(); // Removed, handling inputs directly
+async function submitScore({ name, score }) {
+  const res = await fetch("/api/submit-score", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, score }),
+  });
 
-  const [laneIndex, setLaneIndex] = useState(1);
-  const [jumpRequested, setJumpRequested] = useState(false);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to submit score");
+  }
+  return data;
+}
+
+export default function Game({ displayName, onBackToStart }) {
+  const [score, setScore] = useState(0);
+  const [speed, setSpeed] = useState(GAME.startSpeed);
+  const [gameOver, setGameOver] = useState(false);
+
+  const [best, setBest] = useState(() => {
+    const v = localStorage.getItem("bestScore");
+    return v ? Number(v) : 0;
+  });
+
+  const [submitState, setSubmitState] = useState("idle"); // idle | submitting | done | error
+  const [submitError, setSubmitError] = useState("");
+
+  const runnerRef = useRef();
+  const obstaclesRef = useRef([]);
 
   const timeRef = useRef(0);
-  // const canSwitchRef = useRef(true); // Removed, not needed
+  const lastTRef = useRef(0);
 
-  const { gl } = useThree(); // Access the canvas element
+  const onCollide = useCallback(() => {
+    setGameOver(true);
+  }, []);
 
-  // Add direct input handling for keys and touches
-  useEffect(() => {
-    let touchStartX = 0;
+  const reset = useCallback(() => {
+    setScore(0);
+    setSpeed(GAME.startSpeed);
+    setGameOver(false);
+    setSubmitState("idle");
+    setSubmitError("");
+    timeRef.current = 0;
+    lastTRef.current = 0;
 
-    const handleKeyDown = (e) => {
-      if (gameOver) return;
-      if (e.code === "ArrowLeft" || e.key.toLowerCase() === "a") {
-        setLaneIndex((x) => Math.max(0, x - 1));
-      } else if (e.code === "ArrowRight" || e.key.toLowerCase() === "d") {
-        setLaneIndex((x) => Math.min(2, x + 1));
-      } else if (e.code === "Space" || e.code === "ArrowUp") {
-        e.preventDefault();
-        setJumpRequested(true);
-      }
-    };
+    // Clear obstacles
+    obstaclesRef.current = [];
 
-    const handleTouchStart = (e) => {
-      if (gameOver) return;
-      touchStartX = e.touches[0].clientX;
-    };
+    // Reset runner
+    if (runnerRef.current?.reset) runnerRef.current.reset();
+  }, []);
 
-    const handleTouchEnd = (e) => {
-      if (gameOver) return;
-      const touchEndX = e.changedTouches[0].clientX;
-      const deltaX = touchEndX - touchStartX;
-      const threshold = 50; // Minimum swipe distance
+  // Main loop
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
+    const dt = t - (lastTRef.current || t);
+    lastTRef.current = t;
 
-      if (Math.abs(deltaX) > threshold) {
-        // Swipe detected
-        if (deltaX > 0) {
-          // Swipe right -> move right
-          setLaneIndex((x) => Math.min(2, x + 1));
-        } else {
-          // Swipe left -> move left
-          setLaneIndex((x) => Math.max(0, x - 1));
-        }
-      } else {
-        // Tap -> jump
-        setJumpRequested(true);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    gl.domElement.addEventListener("touchstart", handleTouchStart);
-    gl.domElement.addEventListener("touchend", handleTouchEnd);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      gl.domElement.removeEventListener("touchstart", handleTouchStart);
-      gl.domElement.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, [gameOver, gl]);
-
-  useFrame((_, dt) => {
     if (gameOver) return;
 
     timeRef.current += dt;
 
-    // speed + score
-    speedRef.current = WORLD_SPEED_START + timeRef.current * WORLD_SPEED_RAMP;
-    scoreRef.current += dt * (10 + speedRef.current * 0.3);
+    // Score increases over time (scaled by speed)
+    setScore((s) => s + dt * 10 * speed);
 
-    // lane switching and jump handled in useEffect
+    // Speed ramps
+    setSpeed((sp) => Math.min(GAME.maxSpeed, sp + dt * GAME.speedIncrease));
   });
 
-  const consumeJump = useCallback(() => setJumpRequested(false), []);
-
-  // Add direct jump handling for keys and touches
+  // Save local best
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (gameOver) return;
-      if (e.code === "Space" || e.code === "ArrowUp") {
-        e.preventDefault();
-        setJumpRequested(true);
+    if (gameOver) {
+      const s = Math.floor(score);
+      if (s > best) {
+        setBest(s);
+        localStorage.setItem("bestScore", String(s));
       }
-    };
+    }
+  }, [gameOver, score, best]);
 
-    const handleTouchStart = (e) => {
-      if (gameOver) return;
-      e.preventDefault();
-      setJumpRequested(true);
-    };
+  // Submit to DB once per game over
+  useEffect(() => {
+    if (!gameOver) return;
+    if (!displayName || displayName.length < 2) return;
+    if (submitState !== "idle") return;
 
-    window.addEventListener("keydown", handleKeyDown);
-    gl.domElement.addEventListener("touchstart", handleTouchStart); // Listen on canvas for mobile
+    const s = Math.floor(score);
+    setSubmitState("submitting");
+    setSubmitError("");
 
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      gl.domElement.removeEventListener("touchstart", handleTouchStart);
-    };
-  }, [gameOver, gl]);
+    submitScore({ name: displayName, score: s })
+      .then(() => {
+        setSubmitState("done");
+      })
+      .catch((e) => {
+        setSubmitState("error");
+        setSubmitError(e?.message || "Submit failed");
+      });
+  }, [gameOver, score, displayName, submitState]);
 
-  return (
-    <>
-      <PerspectiveCamera
-        makeDefault
-        position={[0, 6, 12]}
-        fov={55}
-        onUpdate={(cam) => cam.lookAt(0, 1, -20)}
-      />
-
-      <ambientLight intensity={0.6} />
-      <directionalLight
-        position={[6, 10, 4]}
-        intensity={1.2}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-      />
-      <Environment preset="city" />
-      <fog attach="fog" args={["#060914", 10, 70]} />
-
-      <Physics gravity={[0, -30, 0]} key={restartToken}>
-        <Ground />
-
-        <Runner
-          laneIndex={laneIndex}
-          jumpRequested={jumpRequested}
-          consumeJump={consumeJump}
-          onHit={onGameOver}
-          gameOver={gameOver}
-        />
-
-        <Obstacles speed={speedRef} time={timeRef} paused={gameOver} />
-      </Physics>
-    </>
-  );
-}
-
-function StartScreen({ onStart, scores }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "grid",
-        placeItems: "center",
-        background: "rgba(0,0,0,0.8)",
-        color: "white",
-        textAlign: "center",
-      }}
-    >
-      <div>
-        <h1>Church Surfers</h1>
-        <button
-          onClick={onStart}
-          style={{
-            padding: "10px 20px",
-            fontSize: 18,
-            margin: "20px",
-            cursor: "pointer",
-          }}
-        >
-          Start Game
-        </button>
-        <h2>High Scores</h2>
-        <table style={{ margin: "0 auto", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ border: "1px solid white", padding: 8 }}>Score</th>
-              <th style={{ border: "1px solid white", padding: 8 }}>Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {scores.map((score, i) => (
-              <tr key={i}>
-                <td style={{ border: "1px solid white", padding: 8 }}>
-                  {score.value}
-                </td>
-                <td style={{ border: "1px solid white", padding: 8 }}>
-                  {score.date}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-export default function Game() {
-  const [gameStarted, setGameStarted] = useState(false);
-  const [gameOver, setGameOver] = useState(false);
-  const [restartToken, setRestartToken] = useState(0);
-  const [scores, setScores] = useState(
-    () => JSON.parse(localStorage.getItem("gameScores")) || [],
+  const bg = useMemo(
+    () => ({
+      background:
+        "radial-gradient(1200px 600px at 50% 30%, rgba(84,120,255,0.25), rgba(0,0,0,0.9))",
+      minHeight: "100vh",
+    }),
+    [],
   );
 
-  const scoreRef = useRef(0);
-  const speedRef = useRef(WORLD_SPEED_START);
-
-  const [hudScore, setHudScore] = useState(0);
-  const [hudSpeed, setHudSpeed] = useState(WORLD_SPEED_START);
-
-  const onGameOver = useCallback(() => {
-    setGameOver(true);
-    const newScores = [
-      ...scores,
-      {
-        value: Math.floor(scoreRef.current),
-        date: new Date().toLocaleDateString(),
-      },
-    ];
-    newScores.sort((a, b) => b.value - a.value);
-    setScores(newScores.slice(0, 10));
-    localStorage.setItem("gameScores", JSON.stringify(newScores.slice(0, 10)));
-  }, [scores]);
-
-  const restart = useCallback(() => {
-    setGameOver(false);
-    scoreRef.current = 0;
-    speedRef.current = WORLD_SPEED_START;
-    setHudScore(0);
-    setHudSpeed(WORLD_SPEED_START);
-    setRestartToken((x) => x + 1);
-  }, []);
-
-  const startGame = useCallback(() => {
-    setGameStarted(true);
-    restart();
-  }, [restart]);
-
-  const backToStart = useCallback(() => {
-    setGameStarted(false);
-    setGameOver(false);
-  }, []);
-
-  // Update HUD at ~10fps (avoid rerendering every frame)
-  function HudTicker() {
-    const acc = useRef(0);
-    useFrame((_, dt) => {
-      acc.current += dt;
-      if (acc.current >= 0.1) {
-        acc.current = 0;
-        setHudScore(scoreRef.current);
-        setHudSpeed(speedRef.current);
-      }
-    });
-    return null;
-  }
-
-  if (!gameStarted) {
-    return <StartScreen onStart={startGame} scores={scores} />;
-  }
-
   return (
-    <>
-      <Canvas shadows dpr={[1, 2]}>
-        <color attach="background" args={["#060914"]} />
-        <HudTicker />
-        <Scene
-          gameOver={gameOver}
-          onGameOver={onGameOver}
-          scoreRef={scoreRef}
-          speedRef={speedRef}
-          restartToken={restartToken}
+    <div style={bg}>
+      <Canvas
+        camera={{ position: [0, 2.5, 6], fov: 55 }}
+        style={{ height: "100vh" }}
+      >
+        <color attach="background" args={[COLORS.sky]} />
+
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[4, 6, 3]} intensity={1.1} />
+
+        <Ground speed={speed} time={timeRef.current} />
+        <Runner ref={runnerRef} gameOver={gameOver} />
+        <Obstacles
+          obstaclesRef={obstaclesRef}
+          speed={speed}
+          time={timeRef.current}
+          runnerRef={runnerRef}
+          onCollide={onCollide}
         />
       </Canvas>
 
       <Hud
-        score={hudScore}
-        speed={hudSpeed}
+        score={score}
+        speed={speed}
         gameOver={gameOver}
-        onRestart={restart}
-        onBackToStart={backToStart}
+        onRestart={reset}
+        onBackToStart={onBackToStart}
       />
-    </>
+
+      {/* Small status footer */}
+      <div
+        style={{
+          position: "fixed",
+          left: 16,
+          bottom: 12,
+          fontSize: 12,
+          opacity: 0.85,
+          pointerEvents: "none",
+        }}
+      >
+        <div>
+          Local best: <b>{best}</b>
+        </div>
+        <div>
+          Player: <b>{displayName || "?"}</b>
+        </div>
+
+        {gameOver && (
+          <div style={{ marginTop: 6 }}>
+            {submitState === "submitting" && "Submitting score…"}
+            {submitState === "done" && "Score saved to global leaderboard ✅"}
+            {submitState === "error" && (
+              <>
+                Submit failed: <b>{submitError}</b>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
