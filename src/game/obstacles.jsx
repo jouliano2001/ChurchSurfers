@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { RigidBody } from "@react-three/rapier";
 import { useFrame } from "@react-three/fiber";
 import {
@@ -21,43 +21,43 @@ export default function Obstacles({ speed, time, paused }) {
   // Store rigidbody refs by id so we can move them in useFrame
   const bodies = useRef(new Map());
 
-  const spawnInterval = useMemo(() => {
-    // decreases with speed (smaller gaps, harder)
-    return Math.max(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_START - speed * 0.05);
-  }, [speed]);
-
-  useEffect(() => {
-    if (paused) return;
-    if (time - lastSpawnRef.current < spawnInterval) return;
-
-    lastSpawnRef.current = time;
-
-    const laneIndex = randInt(0, 2);
-    const id = crypto.randomUUID();
-
-    setItems((prev) => [
-      ...prev,
-      {
-        id,
-        laneIndex,
-        x: LANES[laneIndex],
-        y: OBSTACLE_SIZE.y / 2,
-        z: SPAWN_Z,
-      },
-    ]);
-  }, [time, spawnInterval, paused]);
-
-  // Move obstacles smoothly (kinematic bodies)
+  // Move obstacles smoothly (kinematic bodies) and handle spawning
   useFrame((_, dt) => {
     if (paused) return;
 
+    // Spawning logic
+    const currentTime = time.current;
+    const currentSpeed = speed.current;
+    const spawnInterval = Math.max(
+      SPAWN_INTERVAL_MIN,
+      SPAWN_INTERVAL_START - currentSpeed * 0.05,
+    );
+    if (currentTime - lastSpawnRef.current >= spawnInterval) {
+      lastSpawnRef.current = currentTime;
+
+      const laneIndex = randInt(0, 2);
+      const id = crypto.randomUUID();
+
+      setItems((prev) => [
+        ...prev,
+        {
+          id,
+          laneIndex,
+          x: LANES[laneIndex],
+          y: OBSTACLE_SIZE.y / 2,
+          z: SPAWN_Z,
+        },
+      ]);
+    }
+
+    // Movement logic
     const toRemove = [];
     for (const o of items) {
       const rb = bodies.current.get(o.id);
       if (!rb) continue;
 
       const t = rb.translation();
-      const nextZ = t.z + speed * dt;
+      const nextZ = t.z + currentSpeed * dt;
 
       rb.setNextKinematicTranslation({ x: t.x, y: t.y, z: nextZ });
 

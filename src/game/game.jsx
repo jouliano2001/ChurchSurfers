@@ -5,7 +5,7 @@ import { Physics } from "@react-three/rapier";
 
 import Hud from "./hud";
 import Ground from "./ground";
-import Runner from "./ground";
+import Runner from "./runner";
 import Obstacles from "./obstacles";
 import { WORLD_SPEED_RAMP, WORLD_SPEED_START } from "./constants";
 
@@ -143,11 +143,7 @@ function Scene({ gameOver, onGameOver, scoreRef, speedRef, restartToken }) {
           gameOver={gameOver}
         />
 
-        <Obstacles
-          speed={speedRef.current}
-          time={timeRef.current}
-          paused={gameOver}
-        />
+        <Obstacles speed={speedRef} time={timeRef} paused={gameOver} />
       </Physics>
     </>
   );
