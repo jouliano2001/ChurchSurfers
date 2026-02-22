@@ -22,9 +22,9 @@ export default function Obstacles({ speed, time, paused }) {
   const bodies = useRef(new Map());
 
   const spawnInterval = useMemo(() => {
-    // decreases slowly
-    return Math.max(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_START - time * 0.01);
-  }, [time]);
+    // decreases with speed (smaller gaps, harder)
+    return Math.max(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_START - speed * 0.05);
+  }, [speed]);
 
   useEffect(() => {
     if (paused) return;
@@ -84,7 +84,9 @@ export default function Obstacles({ speed, time, paused }) {
           }}
         >
           <mesh castShadow>
-            <boxGeometry args={[OBSTACLE_SIZE.x, OBSTACLE_SIZE.y, OBSTACLE_SIZE.z]} />
+            <boxGeometry
+              args={[OBSTACLE_SIZE.x, OBSTACLE_SIZE.y, OBSTACLE_SIZE.z]}
+            />
             <meshStandardMaterial />
           </mesh>
         </RigidBody>

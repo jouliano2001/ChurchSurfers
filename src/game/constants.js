@@ -1,8 +1,8 @@
-export const LANES = [-2, 0, 2];     // x positions for 3 lanes
+export const LANES = [-2, 0, 2]; // x positions for 3 lanes
 export const PLAYER_Z = -2; // was 6
 
 export const WORLD_SPEED_START = 10; // units/sec
-export const WORLD_SPEED_RAMP = 0.25;
+export const WORLD_SPEED_RAMP = 0.5; // Increased for faster speed ramp
 
 export const FLOOR_WIDTH = 8;
 export const FLOOR_TOTAL_LEN = 140;

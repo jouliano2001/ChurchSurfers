@@ -1,4 +1,10 @@
-export default function Hud({ score, speed, gameOver, onRestart }) {
+export default function Hud({
+  score,
+  speed,
+  gameOver,
+  onRestart,
+  onBackToStart,
+}) {
   const pill = {
     background: "rgba(255,255,255,0.06)",
     border: "1px solid rgba(255,255,255,0.10)",
@@ -8,16 +14,29 @@ export default function Hud({ score, speed, gameOver, onRestart }) {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, padding: 16, pointerEvents: "none" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        padding: 16,
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{ display: "flex", justifyContent: "space-between", gap: 12 }}
+      >
         <div style={pill}>
           <div style={{ fontSize: 12, opacity: 0.85 }}>Score</div>
-          <div style={{ fontSize: 20, fontWeight: 800 }}>{Math.floor(score)}</div>
+          <div style={{ fontSize: 20, fontWeight: 800 }}>
+            {Math.floor(score)}
+          </div>
         </div>
 
         <div style={{ ...pill, textAlign: "right" }}>
           <div style={{ fontSize: 12, opacity: 0.85 }}>Speed</div>
-          <div style={{ fontSize: 20, fontWeight: 800 }}>{speed.toFixed(1)}</div>
+          <div style={{ fontSize: 20, fontWeight: 800 }}>
+            {speed.toFixed(1)}
+          </div>
         </div>
       </div>
 
@@ -42,7 +61,9 @@ export default function Hud({ score, speed, gameOver, onRestart }) {
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 6 }}>Game Over</div>
+            <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 6 }}>
+              Game Over
+            </div>
             <div style={{ opacity: 0.85, marginBottom: 14 }}>
               Score: <b>{Math.floor(score)}</b>
             </div>
@@ -57,9 +78,25 @@ export default function Hud({ score, speed, gameOver, onRestart }) {
                 color: "white",
                 cursor: "pointer",
                 fontWeight: 800,
+                marginRight: 10,
               }}
             >
               Restart
+            </button>
+
+            <button
+              onClick={onBackToStart}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(255,255,255,0.10)",
+                color: "white",
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              Back to Start
             </button>
 
             <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
