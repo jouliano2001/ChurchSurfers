@@ -1,29 +1,44 @@
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Physics } from "@react-three/rapier";
+import { supabase } from "../supabaseClient";
 import Ground from "./ground";
 import Runner from "./runner";
 import Obstacles from "./obstacles";
 import Hud from "./hud";
-import { COLORS, GAME } from "./constants";
+import { COLORS, GAME, LANES } from "./constants";
 
 async function submitScore({ name, score }) {
-  const res = await fetch("/api/submit-score", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, score }),
+  const { error } = await supabase.from("scores").insert({ name, score });
+  if (error) throw new Error(error.message);
+}
+
+function CameraRig({ laneIndex }) {
+  const { camera } = useThree();
+
+  useFrame((_, dt) => {
+    // Keep camera centered so lane changes move the PLAYER, not the world visually.
+    // If you want slight follow, set followStrength to a small value like 0.05.
+    const followStrength = 0.0;
+    const targetX = (LANES[laneIndex] ?? 0) * followStrength;
+
+    const desired = { x: targetX, y: 3.6, z: 9.0 };
+
+    camera.position.x += (desired.x - camera.position.x) * Math.min(1, dt * 6);
+    camera.position.y += (desired.y - camera.position.y) * Math.min(1, dt * 6);
+    camera.position.z += (desired.z - camera.position.z) * Math.min(1, dt * 6);
+
+    camera.lookAt(0, 1.1, 0);
   });
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.error || "Failed to submit score");
-  }
-  return data;
+  return null;
 }
 
 export default function Game({ displayName, onBackToStart }) {
   const [score, setScore] = useState(0);
   const [speed, setSpeed] = useState(GAME.startSpeed);
   const [gameOver, setGameOver] = useState(false);
+  const [laneIndex, setLaneIndex] = useState(1);
 
   const [best, setBest] = useState(() => {
     const v = localStorage.getItem("bestScore");
@@ -33,61 +48,125 @@ export default function Game({ displayName, onBackToStart }) {
   const [submitState, setSubmitState] = useState("idle"); // idle | submitting | done | error
   const [submitError, setSubmitError] = useState("");
 
-  const runnerRef = useRef();
-  const obstaclesRef = useRef([]);
+  const obstaclesApiRef = useRef(null);
 
-  const timeRef = useRef(0);
   const lastTRef = useRef(0);
+  const speedRef = useRef(GAME.startSpeed);
+  const lastLaneMoveRef = useRef(0);
 
-  const onCollide = useCallback(() => {
+  const onHit = useCallback(() => {
     setGameOver(true);
   }, []);
 
   const reset = useCallback(() => {
     setScore(0);
     setSpeed(GAME.startSpeed);
+    speedRef.current = GAME.startSpeed;
+
     setGameOver(false);
     setSubmitState("idle");
     setSubmitError("");
-    timeRef.current = 0;
+
     lastTRef.current = 0;
 
-    // Clear obstacles
-    obstaclesRef.current = [];
-
-    // Reset runner
-    if (runnerRef.current?.reset) runnerRef.current.reset();
+    obstaclesApiRef.current?.clear?.();
+    setLaneIndex(1);
   }, []);
 
-  // Main loop
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime();
-    const dt = t - (lastTRef.current || t);
-    lastTRef.current = t;
-
-    if (gameOver) return;
-
-    timeRef.current += dt;
-
-    // Score increases over time (scaled by speed)
-    setScore((s) => s + dt * 10 * speed);
-
-    // Speed ramps
-    setSpeed((sp) => Math.min(GAME.maxSpeed, sp + dt * GAME.speedIncrease));
-  });
-
-  // Save local best
+  // Keyboard + swipe input
   useEffect(() => {
-    if (gameOver) {
-      const s = Math.floor(score);
-      if (s > best) {
-        setBest(s);
-        localStorage.setItem("bestScore", String(s));
+    let touchStartX = 0;
+    const LANE_COOLDOWN_MS = 120;
+
+    const tryMoveLane = (dir) => {
+      const now = performance.now();
+      if (now - lastLaneMoveRef.current < LANE_COOLDOWN_MS) return;
+      lastLaneMoveRef.current = now;
+      setLaneIndex((x) => Math.max(0, Math.min(2, x + dir)));
+    };
+
+    const handleKeyDown = (e) => {
+      if (gameOver) return;
+      if (e.repeat) return;
+      const key = e.key.toLowerCase();
+      if (key === "arrowleft" || key === "a") {
+        tryMoveLane(-1);
+      } else if (key === "arrowright" || key === "d") {
+        tryMoveLane(1);
       }
+    };
+
+    const handleTouchStart = (e) => {
+      if (gameOver) return;
+      touchStartX = e.touches[0].clientX;
+    };
+
+    const handleTouchEnd = (e) => {
+      if (gameOver) return;
+      const touchEndX = e.changedTouches[0].clientX;
+      const dx = touchEndX - touchStartX;
+      const threshold = 40;
+      if (Math.abs(dx) > threshold) {
+        if (dx > 0) {
+          tryMoveLane(1);
+        } else {
+          tryMoveLane(-1);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [gameOver]);
+
+  // RAF loop for speed + score
+  useEffect(() => {
+    let raf = 0;
+    let mounted = true;
+
+    const tick = () => {
+      const t = performance.now() / 1000;
+      const dt = t - (lastTRef.current || t);
+      lastTRef.current = t;
+
+      if (!gameOver) {
+        setSpeed((sp) => {
+          const next = Math.min(GAME.maxSpeed, sp + dt * GAME.speedIncrease);
+          speedRef.current = next;
+          return next;
+        });
+
+        setScore((s) => s + dt * 10 * speedRef.current);
+      }
+
+      if (mounted) raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => {
+      mounted = false;
+      cancelAnimationFrame(raf);
+    };
+  }, [gameOver]);
+
+  // Local best
+  useEffect(() => {
+    if (!gameOver) return;
+    const s = Math.floor(score);
+    if (s > best) {
+      setBest(s);
+      localStorage.setItem("bestScore", String(s));
     }
   }, [gameOver, score, best]);
 
-  // Submit to DB once per game over
+  // Submit once
   useEffect(() => {
     if (!gameOver) return;
     if (!displayName || displayName.length < 2) return;
@@ -98,9 +177,7 @@ export default function Game({ displayName, onBackToStart }) {
     setSubmitError("");
 
     submitScore({ name: displayName, score: s })
-      .then(() => {
-        setSubmitState("done");
-      })
+      .then(() => setSubmitState("done"))
       .catch((e) => {
         setSubmitState("error");
         setSubmitError(e?.message || "Submit failed");
@@ -111,7 +188,7 @@ export default function Game({ displayName, onBackToStart }) {
     () => ({
       background:
         "radial-gradient(1200px 600px at 50% 30%, rgba(84,120,255,0.25), rgba(0,0,0,0.9))",
-      minHeight: "100vh",
+      minHeight: "100svh",
     }),
     [],
   );
@@ -119,23 +196,25 @@ export default function Game({ displayName, onBackToStart }) {
   return (
     <div style={bg}>
       <Canvas
-        camera={{ position: [0, 2.5, 6], fov: 55 }}
-        style={{ height: "100vh" }}
+        camera={{ position: [0, 3.6, 9], fov: 55, near: 0.1, far: 200 }}
+        style={{ height: "100svh", width: "100vw" }}
       >
         <color attach="background" args={[COLORS.sky]} />
 
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[4, 6, 3]} intensity={1.1} />
+        <ambientLight intensity={0.75} />
+        <directionalLight position={[4, 7, 4]} intensity={1.1} castShadow />
 
-        <Ground speed={speed} time={timeRef.current} />
-        <Runner ref={runnerRef} gameOver={gameOver} />
-        <Obstacles
-          obstaclesRef={obstaclesRef}
-          speed={speed}
-          time={timeRef.current}
-          runnerRef={runnerRef}
-          onCollide={onCollide}
-        />
+        <CameraRig laneIndex={laneIndex} />
+
+        <Physics gravity={[0, 0, 0]}>
+          <Ground />
+          <Runner laneIndex={laneIndex} onHit={onHit} />
+          <Obstacles
+            speedRef={speedRef}
+            gameOver={gameOver}
+            obstaclesRef={obstaclesApiRef}
+          />
+        </Physics>
       </Canvas>
 
       <Hud
@@ -144,9 +223,55 @@ export default function Game({ displayName, onBackToStart }) {
         gameOver={gameOver}
         onRestart={reset}
         onBackToStart={onBackToStart}
+        displayName={displayName}
       />
 
-      {/* Small status footer */}
+      {/* On-screen buttons (mobile-friendly fallback) */}
+      <div
+        style={{
+          position: "fixed",
+          right: 12,
+          bottom: 12,
+          display: "flex",
+          gap: 10,
+          pointerEvents: "auto",
+        }}
+      >
+        <button
+          onPointerDown={() => setLaneIndex((x) => Math.max(0, x - 1))}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(0,0,0,0.45)",
+            color: "white",
+            fontWeight: 800,
+            fontSize: 20,
+          }}
+          aria-label="Move left"
+        >
+          ◀
+        </button>
+
+        <button
+          onPointerDown={() => setLaneIndex((x) => Math.min(2, x + 1))}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(0,0,0,0.45)",
+            color: "white",
+            fontWeight: 800,
+            fontSize: 20,
+          }}
+          aria-label="Move right"
+        >
+          ▶
+        </button>
+      </div>
+
       <div
         style={{
           position: "fixed",

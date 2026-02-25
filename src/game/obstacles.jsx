@@ -1,96 +1,127 @@
-import { useRef, useState } from "react";
-import { RigidBody } from "@react-three/rapier";
 import { useFrame } from "@react-three/fiber";
-import {
-  DESPAWN_Z,
-  LANES,
-  OBSTACLE_SIZE,
-  SPAWN_INTERVAL_MIN,
-  SPAWN_INTERVAL_START,
-  SPAWN_Z,
-} from "./constants";
+import { RigidBody } from "@react-three/rapier";
+import { useEffect, useRef, useState } from "react";
+import { GAME, LANE_X, OBSTACLE_SIZES } from "./constants";
 
-function randInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+function uid() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID)
+    return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function Obstacles({ speed, time, paused }) {
-  const [items, setItems] = useState([]);
-  const lastSpawnRef = useRef(0);
+function pickSize() {
+  return OBSTACLE_SIZES[Math.floor(Math.random() * OBSTACLE_SIZES.length)];
+}
 
-  // Store rigidbody refs by id so we can move them in useFrame
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+export default function Obstacles({ speedRef, gameOver, obstaclesRef }) {
+  const [rows, setRows] = useState([]);
   const bodies = useRef(new Map());
 
-  // Move obstacles smoothly (kinematic bodies) and handle spawning
+  const lastRowZ = useRef(GAME.spawnZ);
+  const gameStartTime = useRef(performance.now() / 1000);
+
+  // Expose a safe clear() API to the parent
+  useEffect(() => {
+    if (!obstaclesRef) return;
+    obstaclesRef.current = {
+      clear: () => {
+        bodies.current.clear();
+        setRows([]);
+        lastRowZ.current = GAME.spawnZ;
+        gameStartTime.current = performance.now() / 1000;
+      },
+    };
+  }, [obstaclesRef]);
+
   useFrame((_, dt) => {
-    if (paused) return;
+    if (gameOver) return;
 
-    // Spawning logic
-    const currentTime = time.current;
-    const currentSpeed = speed.current;
-    const spawnInterval = Math.max(
-      SPAWN_INTERVAL_MIN,
-      SPAWN_INTERVAL_START - currentSpeed * 0.05,
+    const speed = speedRef?.current ?? GAME.startSpeed;
+    const currentTime = performance.now() / 1000;
+    const gameTime = currentTime - gameStartTime.current;
+
+    // Spawn new row if needed
+    const gapZ = Math.max(
+      GAME.minGapZ,
+      GAME.baseGapZ - GAME.gapShrinkFactor * speed,
     );
-    if (currentTime - lastSpawnRef.current >= spawnInterval) {
-      lastSpawnRef.current = currentTime;
+    const spawnZ = lastRowZ.current - gapZ;
 
-      const laneIndex = randInt(0, 2);
-      const id = crypto.randomUUID();
+    if (
+      Math.abs(spawnZ - lastRowZ.current) >= gapZ &&
+      rows.length < GAME.maxActiveRows
+    ) {
+      // Determine number of blocked lanes
+      const isEarly =
+        gameTime < GAME.earlyGameSeconds || speed < GAME.startSpeed + 2;
+      const numBlocked = isEarly ? 1 : Math.random() < 0.6 ? 1 : 2; // 60% chance for 1, 40% for 2
 
-      setItems((prev) => [
-        ...prev,
-        {
-          id,
-          laneIndex,
-          x: LANES[laneIndex],
-          y: OBSTACLE_SIZE.y / 2,
-          z: SPAWN_Z,
-        },
-      ]);
+      // Choose which lanes to block
+      const allLanes = [0, 1, 2];
+      shuffle(allLanes);
+      const blockedLanes = allLanes.slice(0, numBlocked);
+
+      const rowId = uid();
+      const obstacles = blockedLanes.map((laneIndex) => ({
+        id: uid(),
+        laneIndex,
+        size: pickSize(),
+      }));
+
+      setRows((prev) => [...prev, { id: rowId, z: spawnZ, obstacles }]);
+      lastRowZ.current = spawnZ;
     }
 
-    // Movement logic
+    // Move rows
     const toRemove = [];
-    for (const o of items) {
-      const rb = bodies.current.get(o.id);
-      if (!rb) continue;
-
-      const t = rb.translation();
-      const nextZ = t.z + currentSpeed * dt;
-
-      rb.setNextKinematicTranslation({ x: t.x, y: t.y, z: nextZ });
-
-      if (nextZ > DESPAWN_Z) toRemove.push(o.id);
+    for (const row of rows) {
+      row.z += speed * dt;
+      if (row.z > GAME.despawnZ) toRemove.push(row.id);
     }
 
     if (toRemove.length) {
-      setItems((prev) => prev.filter((o) => !toRemove.includes(o.id)));
-      for (const id of toRemove) bodies.current.delete(id);
+      setRows((prev) => prev.filter((r) => !toRemove.includes(r.id)));
+      toRemove.forEach((rowId) => {
+        const row = rows.find((r) => r.id === rowId);
+        if (row) row.obstacles.forEach((o) => bodies.current.delete(o.id));
+      });
     }
   });
 
   return (
     <group>
-      {items.map((o) => (
-        <RigidBody
-          key={o.id}
-          type="kinematicPosition"
-          colliders="cuboid"
-          position={[o.x, o.y, o.z]}
-          userData={{ type: "obstacle" }}
-          ref={(rb) => {
-            if (rb) bodies.current.set(o.id, rb);
-          }}
-        >
-          <mesh castShadow>
-            <boxGeometry
-              args={[OBSTACLE_SIZE.x, OBSTACLE_SIZE.y, OBSTACLE_SIZE.z]}
-            />
-            <meshStandardMaterial />
-          </mesh>
-        </RigidBody>
-      ))}
+      {rows.map((row) =>
+        row.obstacles.map((o) => (
+          <RigidBody
+            key={o.id}
+            ref={(rb) => {
+              if (rb) bodies.current.set(o.id, rb);
+              else bodies.current.delete(o.id);
+            }}
+            type="kinematicPosition"
+            position={[LANE_X[o.laneIndex], 0.6, row.z]}
+            colliders="cuboid"
+            userData={{ type: "obstacle" }}
+          >
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[o.size.x, o.size.y, o.size.z]} />
+              <meshStandardMaterial
+                color="#ffffff"
+                emissive="#ffffff"
+                emissiveIntensity={0.15}
+              />
+            </mesh>
+          </RigidBody>
+        )),
+      )}
     </group>
   );
 }

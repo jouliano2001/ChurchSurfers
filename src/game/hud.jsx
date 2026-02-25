@@ -4,10 +4,11 @@ export default function Hud({
   gameOver,
   onRestart,
   onBackToStart,
+  displayName,
 }) {
   const pill = {
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.45)",
+    border: "1px solid rgba(255,255,255,0.12)",
     borderRadius: 12,
     padding: "10px 12px",
     backdropFilter: "blur(6px)",
@@ -23,16 +24,31 @@ export default function Hud({
       }}
     >
       <div
-        style={{ display: "flex", justifyContent: "space-between", gap: 12 }}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
       >
-        <div style={pill}>
+        <div style={{ ...pill, minWidth: 140, color: "white" }}>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>Player</div>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>
+            {displayName || "—"}
+          </div>
+        </div>
+
+        <div style={{ ...pill, color: "white" }}>
           <div style={{ fontSize: 12, opacity: 0.85 }}>Score</div>
           <div style={{ fontSize: 20, fontWeight: 800 }}>
             {Math.floor(score)}
           </div>
         </div>
 
-        <div style={{ ...pill, textAlign: "right" }}>
+        <div
+          style={{ ...pill, textAlign: "right", minWidth: 90, color: "white" }}
+        >
           <div style={{ fontSize: 12, opacity: 0.85 }}>Speed</div>
           <div style={{ fontSize: 20, fontWeight: 800 }}>
             {speed.toFixed(1)}
@@ -100,7 +116,7 @@ export default function Hud({
             </button>
 
             <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
-              Move: A/D or ←/→ · Jump: W/↑/Space
+             Move: A/D or ←/→ · Swipe left/right on mobile
             </div>
           </div>
         </div>

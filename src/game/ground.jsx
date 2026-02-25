@@ -1,28 +1,53 @@
 import { RigidBody } from "@react-three/rapier";
-import { FLOOR_TOTAL_LEN, FLOOR_WIDTH } from "./constants";
+import { COLORS, GAME, LANE_WIDTH, LANE_X } from "./constants";
 
 export default function Ground() {
-  // A single long slab for both physics + visuals
-const centerZ = -FLOOR_TOTAL_LEN / 2 + 20; 
-// For len=140, center becomes -50 => road spans z [-120, +20]
+  const zStart = GAME.despawnZ - 10;
+  const zEnd = GAME.spawnZ + 20;
+  const len = zEnd - zStart;
+  const centerZ = (zStart + zEnd) / 2;
 
   return (
     <group>
-      <RigidBody type="fixed" colliders="cuboid" position={[0, -0.5, centerZ]}>
+      <RigidBody type="fixed" colliders="cuboid" position={[0, -0.6, centerZ]}>
         <mesh receiveShadow>
-          <boxGeometry args={[FLOOR_WIDTH, 1, FLOOR_TOTAL_LEN]} />
-          <meshStandardMaterial />
+          <boxGeometry args={[GAME.floorWidth, 1, len]} />
+          <meshStandardMaterial
+            color={COLORS.ground}
+            emissive={COLORS.ground}
+            emissiveIntensity={0.25}
+          />
         </mesh>
       </RigidBody>
 
-      {/* lane lines */}
-      <mesh position={[-1, 0.02, centerZ]} receiveShadow>
-        <boxGeometry args={[0.05, 0.02, FLOOR_TOTAL_LEN]} />
-        <meshStandardMaterial />
+      {/* Lane center lines */}
+      {LANE_X.map((x, i) => (
+        <mesh key={i} position={[x, 0.01, centerZ]} receiveShadow>
+          <boxGeometry args={[0.1, 0.01, len]} />
+          <meshStandardMaterial
+            color="#ffffff"
+            emissive="#ffffff"
+            emissiveIntensity={0.3}
+          />
+        </mesh>
+      ))}
+
+      {/* Lane separators */}
+      <mesh position={[-LANE_WIDTH / 2, 0.02, centerZ]} receiveShadow>
+        <boxGeometry args={[0.06, 0.02, len]} />
+        <meshStandardMaterial
+          color="#cfd7ff"
+          emissive="#cfd7ff"
+          emissiveIntensity={0.2}
+        />
       </mesh>
-      <mesh position={[1, 0.02, centerZ]} receiveShadow>
-        <boxGeometry args={[0.05, 0.02, FLOOR_TOTAL_LEN]} />
-        <meshStandardMaterial />
+      <mesh position={[LANE_WIDTH / 2, 0.02, centerZ]} receiveShadow>
+        <boxGeometry args={[0.06, 0.02, len]} />
+        <meshStandardMaterial
+          color="#cfd7ff"
+          emissive="#cfd7ff"
+          emissiveIntensity={0.2}
+        />
       </mesh>
     </group>
   );

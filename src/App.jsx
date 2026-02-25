@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "./supabaseClient";
 import Game from "./game/game";
 
 function getStoredName() {
@@ -18,9 +19,13 @@ function setStoredName(name) {
 }
 
 async function fetchLeaderboard() {
-  const res = await fetch("/api/leaderboard?limit=10");
-  if (!res.ok) throw new Error("Failed to fetch leaderboard");
-  return res.json();
+  const { data, error } = await supabase
+    .from("scores")
+    .select("name, score")
+    .order("score", { ascending: false })
+    .limit(10);
+  if (error) throw new Error(error.message);
+  return { leaderboard: data };
 }
 
 export default function App() {
@@ -84,9 +89,7 @@ export default function App() {
                 padding: 18,
               }}
             >
-              <div style={{ fontSize: 30, fontWeight: 900 }}>
-                ChurchSurfers
-              </div>
+              <div style={{ fontSize: 30, fontWeight: 900 }}>ChurchSurfers</div>
               <div style={{ opacity: 0.85, marginTop: 6, marginBottom: 14 }}>
                 Enter a display name (this is what gets saved in the database).
               </div>

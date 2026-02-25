@@ -1,24 +1,16 @@
+// api/submit-score.js
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  // This throws on cold start if env vars are missing (good: fails fast)
-  throw new Error(
-    "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY server env vars."
-  );
+if (!supabaseUrl || !serviceRoleKey) {
+  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in env.");
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 export default async function handler(req, res) {
-  // Basic CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -26,52 +18,53 @@ export default async function handler(req, res) {
   try {
     const { name, score } = req.body || {};
 
-    if (typeof name !== "string" || !name.trim()) {
-      return res.status(400).json({ error: "Name is required." });
-    }
-    const cleanedName = name.trim().slice(0, 24);
+    const cleanName = typeof name === "string" ? name.trim() : "";
+    const cleanScore = Number(score);
 
-    const numericScore = Number(score);
-    if (!Number.isFinite(numericScore) || numericScore < 0) {
-      return res.status(400).json({ error: "Score must be a valid number." });
+    if (!cleanName || cleanName.length < 2 || cleanName.length > 20) {
+      return res.status(400).json({ error: "Name must be 2-20 characters." });
+    }
+    if (!Number.isFinite(cleanScore) || cleanScore < 0) {
+      return res
+        .status(400)
+        .json({ error: "Score must be a valid number >= 0." });
     }
 
-    // Upsert by unique name:
-    // - If player exists, update if new score is higher
-    // - If not exists, insert new
+    // Upsert row for this name
+    // Requires UNIQUE index on scores(name)
+    // Then we update only if the incoming score is higher
     const { data: existing, error: existingErr } = await supabase
       .from("scores")
-      .select("name, score")
-      .eq("name", cleanedName)
+      .select("id, score")
+      .eq("name", cleanName)
       .maybeSingle();
 
-    if (existingErr) throw existingErr;
+    if (existingErr) {
+      return res.status(500).json({ error: existingErr.message });
+    }
 
     if (!existing) {
-      const { error: insertErr } = await supabase.from("scores").insert([
-        { name: cleanedName, score: Math.floor(numericScore) },
-      ]);
-      if (insertErr) throw insertErr;
+      const { error: insertErr } = await supabase
+        .from("scores")
+        .insert([{ name: cleanName, score: cleanScore }]);
 
-      return res.status(200).json({ ok: true, updated: "inserted" });
+      if (insertErr) return res.status(500).json({ error: insertErr.message });
+      return res.status(200).json({ ok: true, action: "inserted" });
     }
 
-    // Only update if higher
-    if (Math.floor(numericScore) > existing.score) {
+    // Only update if higher score
+    if (cleanScore > existing.score) {
       const { error: updateErr } = await supabase
         .from("scores")
-        .update({ score: Math.floor(numericScore) })
-        .eq("name", cleanedName);
+        .update({ score: cleanScore })
+        .eq("id", existing.id);
 
-      if (updateErr) throw updateErr;
-
-      return res.status(200).json({ ok: true, updated: "updated" });
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
+      return res.status(200).json({ ok: true, action: "updated" });
     }
 
-    return res.status(200).json({ ok: true, updated: "kept_best" });
-  } catch (err) {
-    return res.status(500).json({
-      error: err?.message || "Server error",
-    });
+    return res.status(200).json({ ok: true, action: "kept_best" });
+  } catch (e) {
+    return res.status(500).json({ error: e?.message || "Server error" });
   }
 }
