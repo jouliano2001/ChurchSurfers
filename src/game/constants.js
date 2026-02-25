@@ -50,6 +50,10 @@ export const GAME = {
   gapShrinkFactor: 0.1, // how much gap shrinks with speed
   maxActiveRows: 5, // max rows active
   earlyGameSeconds: 10, // first N seconds: only 1 obstacle per row
+
+  // Ground dimensions
+  floorWidth: LANE_WIDTH * 4,
+  floorLength: 120,
 };
 
 // Backward-compatible aliases

@@ -5,7 +5,21 @@ export default function Hud({
   onRestart,
   onBackToStart,
   displayName,
+  onMoveLeft,
+  onMoveRight,
 }) {
+  const triggerMoveLeft = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onMoveLeft?.();
+  };
+
+  const triggerMoveRight = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onMoveRight?.();
+  };
+
   const pill = {
     background: "rgba(0,0,0,0.45)",
     border: "1px solid rgba(255,255,255,0.12)",
@@ -56,6 +70,64 @@ export default function Hud({
         </div>
       </div>
 
+      {/* Mobile controls */}
+      {!gameOver && (
+        <div
+          data-control-zone="lane-buttons"
+          style={{
+            position: "fixed",
+            bottom: 20,
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            gap: 20,
+            pointerEvents: "auto",
+            touchAction: "manipulation",
+          }}
+        >
+          <button
+            type="button"
+            onPointerDown={triggerMoveLeft}
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: "50%",
+              border: "2px solid rgba(255,255,255,0.3)",
+              background: "rgba(0,0,0,0.5)",
+              color: "white",
+              fontSize: 24,
+              fontWeight: "bold",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            onPointerDown={triggerMoveRight}
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: "50%",
+              border: "2px solid rgba(255,255,255,0.3)",
+              background: "rgba(0,0,0,0.5)",
+              color: "white",
+              fontSize: 24,
+              fontWeight: "bold",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            →
+          </button>
+        </div>
+      )}
+
       {gameOver && (
         <div
           style={{
@@ -84,39 +156,25 @@ export default function Hud({
               Score: <b>{Math.floor(score)}</b>
             </div>
 
-            <button
-              onClick={onRestart}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.18)",
-                background: "rgba(255,255,255,0.10)",
-                color: "white",
-                cursor: "pointer",
-                fontWeight: 800,
-                marginRight: 10,
-              }}
-            >
-              Restart
-            </button>
-
-            <button
-              onClick={onBackToStart}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.18)",
-                background: "rgba(255,255,255,0.10)",
-                color: "white",
-                cursor: "pointer",
-                fontWeight: 800,
-              }}
-            >
-              Back to Start
-            </button>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <button
+                onClick={onBackToStart}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "rgba(255,255,255,0.10)",
+                  color: "white",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                Back to Start
+              </button>
+            </div>
 
             <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
-             Move: A/D or ←/→ · Swipe left/right on mobile
+              Move: A/D or ←/→ · Swipe left/right on mobile
             </div>
           </div>
         </div>

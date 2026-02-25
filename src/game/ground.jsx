@@ -1,11 +1,28 @@
+import { useFrame } from "@react-three/fiber";
 import { RigidBody } from "@react-three/rapier";
+import * as THREE from "three";
+import { useTexture } from "@react-three/drei";
 import { COLORS, GAME, LANE_WIDTH, LANE_X } from "./constants";
 
-export default function Ground() {
-  const zStart = GAME.despawnZ - 10;
-  const zEnd = GAME.spawnZ + 20;
+export default function Ground({ speedRef }) {
+  const roadTex = useTexture("/road.png");
+  const repeatY = 12;
+
+  roadTex.wrapS = roadTex.wrapT = THREE.RepeatWrapping;
+  roadTex.repeat.set(1, repeatY);
+  roadTex.anisotropy = 8;
+
+  const zStart = GAME.spawnZ - 20;
+  const zEnd = GAME.despawnZ + 10;
   const len = zEnd - zStart;
   const centerZ = (zStart + zEnd) / 2;
+  const uvPerWorldUnit = repeatY / len;
+
+  useFrame((_, dt) => {
+    const speed = speedRef?.current ?? GAME.startSpeed;
+    // Move in the same world direction as obstacles (+Z), scaled by world speed.
+    roadTex.offset.y += speed * dt * uvPerWorldUnit;
+  });
 
   return (
     <group>
@@ -13,9 +30,10 @@ export default function Ground() {
         <mesh receiveShadow>
           <boxGeometry args={[GAME.floorWidth, 1, len]} />
           <meshStandardMaterial
-            color={COLORS.ground}
-            emissive={COLORS.ground}
-            emissiveIntensity={0.25}
+            map={roadTex}
+            color="#ffffff"
+            emissive="#000000"
+            emissiveIntensity={0}
           />
         </mesh>
       </RigidBody>

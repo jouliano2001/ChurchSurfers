@@ -75,10 +75,10 @@ export default function App() {
           <div
             style={{
               width: "min(820px, 96vw)",
-              display: "grid",
+              display: "flex",
+              flexDirection: window.innerWidth < 768 ? "column" : "row",
               gap: 14,
-              gridTemplateColumns: "1.1fr 0.9fr",
-              alignItems: "start",
+              alignItems: window.innerWidth < 768 ? "stretch" : "start",
             }}
           >
             <div
@@ -107,6 +107,7 @@ export default function App() {
                 maxLength={24}
                 style={{
                   width: "100%",
+                  maxWidth: "300px",
                   marginTop: 6,
                   padding: "10px 12px",
                   borderRadius: 12,
