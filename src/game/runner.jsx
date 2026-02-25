@@ -17,11 +17,12 @@ export default function Runner({ laneIndex, onHit }) {
     if (!body) return;
 
     try {
+      const t = body.translation();
       body.setTranslation(
         {
           x: LANE_X[laneIndex] ?? 0,
-          y: PLAYER_Y,
-          z: PLAYER_Z,
+          y: t.y,
+          z: t.z,
         },
         true,
       );

@@ -18,8 +18,9 @@ body,
 body {
   margin: 0;
   background: #050814;
-  overflow: hidden;
-  touch-action: none; /* enables reliable swipe controls */
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: auto;
 }
 
 canvas {

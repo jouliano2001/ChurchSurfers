@@ -60,7 +60,10 @@ export default function Game({ displayName, onBackToStart }) {
   const moveLane = useCallback(
     (dir) => {
       if (gameOver) return;
-      setLaneIndex((x) => Math.max(0, Math.min(2, x + dir)));
+      setLaneIndex((current) => {
+        const maxLane = LANES.length - 1;
+        return Math.max(0, Math.min(maxLane, current + dir));
+      });
     },
     [gameOver],
   );
@@ -87,88 +90,6 @@ export default function Game({ displayName, onBackToStart }) {
     obstaclesApiRef.current?.clear?.();
     setLaneIndex(1);
   }, []);
-
-  // Keyboard + swipe input
-  useEffect(() => {
-    let touchStartX = 0;
-    let touchId = null;
-    let touchFromControls = false;
-
-    const findTouchById = (touchList, id) => {
-      for (let i = 0; i < touchList.length; i += 1) {
-        if (touchList[i].identifier === id) return touchList[i];
-      }
-      return null;
-    };
-
-    const handleKeyDown = (e) => {
-      if (gameOver) return;
-      if (e.repeat) return;
-      const key = e.key.toLowerCase();
-      if (key === "arrowleft" || key === "a") {
-        e.preventDefault();
-        moveLane(-1);
-      } else if (key === "arrowright" || key === "d") {
-        e.preventDefault();
-        moveLane(1);
-      }
-    };
-
-    const handleTouchStart = (e) => {
-      if (gameOver) return;
-      const firstTouch = e.changedTouches?.[0];
-      if (!firstTouch) return;
-
-      touchFromControls = Boolean(
-        e.target instanceof Element &&
-          e.target.closest?.("[data-control-zone='lane-buttons']"),
-      );
-      if (touchFromControls) return;
-
-      touchId = firstTouch.identifier;
-      touchStartX = firstTouch.clientX;
-    };
-
-    const handleTouchEnd = (e) => {
-      if (gameOver) return;
-      if (touchFromControls) {
-        touchFromControls = false;
-        touchId = null;
-        return;
-      }
-      const touch = findTouchById(e.changedTouches, touchId);
-      if (!touch) return;
-
-      const touchEndX = touch.clientX;
-      const dx = touchEndX - touchStartX;
-      const threshold = 24;
-      if (Math.abs(dx) > threshold) {
-        if (dx > 0) {
-          moveLane(1);
-        } else {
-          moveLane(-1);
-        }
-      }
-      touchId = null;
-    };
-
-    const handleTouchCancel = () => {
-      touchFromControls = false;
-      touchId = null;
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("touchstart", handleTouchStart, { passive: true });
-    window.addEventListener("touchend", handleTouchEnd);
-    window.addEventListener("touchcancel", handleTouchCancel);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("touchstart", handleTouchStart);
-      window.removeEventListener("touchend", handleTouchEnd);
-      window.removeEventListener("touchcancel", handleTouchCancel);
-    };
-  }, [gameOver, moveLane]);
 
   // RAF loop for speed + score
   useEffect(() => {

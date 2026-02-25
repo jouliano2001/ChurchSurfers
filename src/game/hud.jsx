@@ -8,15 +8,11 @@ export default function Hud({
   onMoveLeft,
   onMoveRight,
 }) {
-  const triggerMoveLeft = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const triggerMoveLeft = () => {
     onMoveLeft?.();
   };
 
-  const triggerMoveRight = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const triggerMoveRight = () => {
     onMoveRight?.();
   };
 
@@ -34,7 +30,7 @@ export default function Hud({
         position: "fixed",
         inset: 0,
         padding: 16,
-        pointerEvents: "none",
+        pointerEvents: "auto",
       }}
     >
       <div
@@ -44,12 +40,13 @@ export default function Hud({
           gap: 12,
           alignItems: "center",
           flexWrap: "wrap",
+          pointerEvents: "none",
         }}
       >
         <div style={{ ...pill, minWidth: 140, color: "white" }}>
           <div style={{ fontSize: 12, opacity: 0.85 }}>Player</div>
           <div style={{ fontSize: 16, fontWeight: 800 }}>
-            {displayName || "—"}
+            {displayName || "-"}
           </div>
         </div>
 
@@ -70,32 +67,34 @@ export default function Hud({
         </div>
       </div>
 
-      {/* Mobile controls */}
       {!gameOver && (
         <div
-          data-control-zone="lane-buttons"
           style={{
             position: "fixed",
-            bottom: 20,
+            bottom: 24,
             left: "50%",
             transform: "translateX(-50%)",
             display: "flex",
-            gap: 20,
+            gap: 16,
             pointerEvents: "auto",
             touchAction: "manipulation",
+            padding: 8,
+            borderRadius: 999,
+            background: "rgba(0,0,0,0.2)",
           }}
         >
           <button
             type="button"
             onPointerDown={triggerMoveLeft}
+            aria-label="Move left"
             style={{
-              width: 60,
-              height: 60,
+              width: 84,
+              height: 84,
               borderRadius: "50%",
               border: "2px solid rgba(255,255,255,0.3)",
               background: "rgba(0,0,0,0.5)",
               color: "white",
-              fontSize: 24,
+              fontSize: 34,
               fontWeight: "bold",
               cursor: "pointer",
               display: "flex",
@@ -103,19 +102,21 @@ export default function Hud({
               justifyContent: "center",
             }}
           >
-            ←
+            {"<"}
           </button>
+
           <button
             type="button"
             onPointerDown={triggerMoveRight}
+            aria-label="Move right"
             style={{
-              width: 60,
-              height: 60,
+              width: 84,
+              height: 84,
               borderRadius: "50%",
               border: "2px solid rgba(255,255,255,0.3)",
               background: "rgba(0,0,0,0.5)",
               color: "white",
-              fontSize: 24,
+              fontSize: 34,
               fontWeight: "bold",
               cursor: "pointer",
               display: "flex",
@@ -123,7 +124,7 @@ export default function Hud({
               justifyContent: "center",
             }}
           >
-            →
+            {">"}
           </button>
         </div>
       )}
@@ -174,7 +175,7 @@ export default function Hud({
             </div>
 
             <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
-              Move: A/D or ←/→ · Swipe left/right on mobile
+              Move with the on-screen left/right buttons
             </div>
           </div>
         </div>

@@ -139,7 +139,7 @@ export default function App() {
               </button>
 
               <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
-                Move: A/D or ←/→ · Jump: W/↑/Space
+                Move with the on-screen left/right buttons
               </div>
             </div>
 
